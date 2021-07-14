@@ -1,0 +1,85 @@
+#! /usr/bin/fish
+
+# if not run via sudo, redirect through sudo
+if test (whoami) != 'root'
+    sudo /usr/bin/fish (basename (status -f)) $argv -u (whoami)
+    exit
+end
+
+# if test (count $argv) = 0; or test (count $argv) = 1
+if test (count $argv) -lt 3
+    echo 'Invalid use'
+    echo '-- sample'
+    echo '  virtualhdd --image=<image name> --size=<size in GB> [--encrypted]'
+    echo '      if drive is to be encrypted, specify --encrypted'
+    exit 
+end
+
+# -u will be set beind the scenes when the script is redirected through sudo
+argparse --name=virtualhdd --ignore-unknown --min-args=0 --max-args=2 'h/help' 'i/image=' 's/size=' 'e/encrypted' 'u=' -- $argv
+or exit
+
+set current_user $_flag_u
+
+if set -q _flag_help
+    echo DISPLAY HELP HERE
+    exit
+end
+if not set -q _flag_image
+    echo 'The image name must be specified via --image='
+    exit
+else
+    switch $_flag_image
+    case '*.img'
+        # do nothing
+    case '*'
+        echo 'unexpected file name; expecting file to have .img extension'
+        exit
+    end
+end
+
+set volume (basename (echo (string trim --left --chars=./ $_flag_image) | cut -f 1 -d '.'))
+
+if not set -q _flag_size
+    echo 'The image size (in GB) MUST be specified; e.g. --size=1 would create a 1GB drive'
+    exit
+end
+
+if test -e $_flag_image; or test -f $_flag_image 
+    echo "$_flag_image already exists! Use mountvhd to mount the image"
+    exit
+end
+
+set count (math "$_flag_size * 1024")
+
+echo
+
+dd if=/dev/zero of=$_flag_image bs=1M count=$count &> /dev/null
+
+
+
+
+if set -q _flag_encrypted
+    set pswd (tr -dc 'A-Za-z0-9!"#$%&'\''()*+,-./:;<=>?@[\]^_`{|}~' </dev/urandom | head -c 16)
+    echo $pswd > .$volume.pswd
+    chown $current_user:$current_user .$volume.pswd
+
+    # echo $pswd | cryptsetup -y luksFormat $_flag_image        # removed -y since password verification cannot occur when using piped input
+    echo $pswd | cryptsetup luksFormat $_flag_image
+    if not echo $pswd | cryptsetup luksOpen $_flag_image $volume
+        rm $_flag_image &> /dev/null
+        exit 
+    end
+    echo -n 'making file system... '
+    mkfs.ext4 /dev/mapper/$volume &> /dev/null
+    echo '[ok]'
+    echo -n 'unmapping... '
+    echo $pswd | cryptsetup luksClose $volume
+    echo '[ok]'
+else
+    printf "g\nn\n\n\nw\n" | fdisk $_flag_image
+    mkfs.ext4 $_flag_image
+end
+
+chown $current_user:$current_user $_flag_image
+echo "$_flag_size GB Disk image, $_flag_image, now available. Use the mountvhd script to mount and use the image."

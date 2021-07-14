@@ -1,0 +1,83 @@
+#! /usr/bin/fish
+
+# if not run via sudo, redirect through sudo
+if test (whoami) != 'root'
+    sudo /usr/bin/fish (basename (status -f)) $argv
+    exit
+end
+
+if test (count $argv) -lt 1
+    echo 'Invalid use'
+    echo '-- sample'
+    echo '  mountvhd --image=<image name> --mountpoint=<mount path> [--encrypted]'
+    exit 
+end
+
+argparse --name=mountvhd --ignore-unknown 'i/image=' 'm/mountpoint=' 'e/encrypted' -- $argv
+or exit
+
+if not set -q _flag_image
+    echo 'The image name must be specified'
+    exit
+end
+if not set -q _flag_mountpoint
+    echo 'A mountpoint must be specified'
+    exit
+end
+
+set mountpoint $_flag_mountpoint
+set volume (basename (echo $_flag_image | cut -f 1 -d '.'))
+
+if not test -d $mountpoint
+    echo "Mountpoint $mountpoint does not exist; you will need to create that first."
+    exit 
+end
+
+if not test -e $_flag_image; or not test -f $_flag_image
+    echo "$_flag_image not found"
+    exit
+end
+
+if test -e .$volume.pswd; and test -f .$volume.pswd
+    set pswd (cat .$volume.pswd)
+end
+
+if not set -q _flag_encrypted
+    set dev (losetup -Pf --show $_flag_image)
+    if not mount $dev $mountpoint
+        echo 'ERROR MOUNTING VOLUME; perhaps you meant to include option --encrypted'
+        exit
+    end
+    echo "IMAGE IS NOW MOUNTED AT $mountpoint"
+else
+    if set -q pswd 
+        echo $pswd | cryptsetup luksOpen $_flag_image $volume
+    else
+        cryptsetup luksOpen $_flag_image $volume
+    end
+
+    if not mount /dev/mapper/$volume $mountpoint
+        if set -q pswd 
+            echo $pswd | cryptsetup luksClose $volume
+        else
+            cryptsetup luksClose $volume
+        end
+        echo 'ERROR MOUNTING VOLUME'
+        exit
+    end
+    echo "ENCRYPTED VOLUME NOW MOUNTED AT $mountpoint"
+end
+
+chown jim:jim $mountpoint
+
+echo
+echo 'LEAVE THIS RUNNING (DO NOT PRESS ENTER UNTIL DONE WITH THE DRIVE)'
+read --prompt-str 'press enter when done with drive: '
+umount $mountpoint
+if set -q _flag_encrypted
+    if set -q pswd
+        echo $pswd | cryptsetup luksClose $volume
+    else
+        cryptsetup luksClose $volume
+    end
+end 
