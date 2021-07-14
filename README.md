@@ -8,8 +8,6 @@ The two executable shell scripts automate the creation, optional encryption, and
 
 Creates the virtual drive image.
 
-`/home/jim/Dropbox/dev/encrypted_disk_images/virtualhdd`
-
 ```bash
 virtualhdd --image=<image name> --size=<size in GB> [--encrypted]
       if drive is to be encrypted, specify --encrypted
@@ -18,8 +16,6 @@ virtualhdd --image=<image name> --size=<size in GB> [--encrypted]
 ## mountvhd
 
 Mounts the drive image.
-
-`/home/jim/Dropbox/dev/encrypted_disk_images/mountvhd`
 
 ```bash
 mountvhd --image=<image name> --mountpoint=<mount path> [--encrypted]
